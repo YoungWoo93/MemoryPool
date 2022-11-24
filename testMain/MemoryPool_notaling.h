@@ -42,13 +42,13 @@ template <typename T> class MemoryPool_notaling;
 
 #pragma pack(push, 1)
 template <typename T>
-struct  memoryBlock_control // align 하지 않음, 메모리 풀에 들어가는 얘들 대부분은 어차피 포인터로 들어갈거임 (객체) 포인터가 아닌 value 자체가 들어가는걸 생각해내자
+struct  memoryBlock_control
 {
 	memoryBlock_control()
-		: Free(nullptr), data(), next(nullptr), allocPtr(nullptr) {
+		: Free(nullptr), data(), next(nullptr) {
 	}
-	memoryBlock_control(memoryBlock_control* _next, memoryBlock_control* _free, char* _allocPtr)
-		: Free(_free), data(), next(_next), allocPtr(_allocPtr) {
+	memoryBlock_control(memoryBlock_control* _next, memoryBlock_control* _free)
+		: Free(_free), data(), next(_next){
 	}
 	~memoryBlock_control() {
 	}
@@ -57,7 +57,6 @@ struct  memoryBlock_control // align 하지 않음, 메모리 풀에 들어가는 얘들 대부분
 	T data;
 
 	memoryBlock_control* next;
-	char* allocPtr;
 	friend class MemoryPool_notaling<T>;
 };
 #pragma pack(pop)
@@ -80,7 +79,7 @@ public:
 		for (int i = 0; i < _size; i++)
 		{
 			char* allocPtr = (char*)HeapAlloc(heap, 0, sizeof(memoryBlock_control<T>));// new memoryBlock_control<T>();
-			memoryBlock_control<T>* newNode = new (allocPtr) memoryBlock_control<T>(top, (memoryBlock_control<T>*)((PTRSIZEINT)FreePtr | CHECK), allocPtr);
+			memoryBlock_control<T>* newNode = new (allocPtr) memoryBlock_control<T>(top, (memoryBlock_control<T>*)((PTRSIZEINT)FreePtr | CHECK));
 
 			top = newNode;
 			FreePtr = newNode;
@@ -94,7 +93,7 @@ public:
 			memoryBlock_control<T>* temp = FreePtr;
 			if (((PTRSIZEINT)(temp->Free) & FLAG) != CHECK)
 			{
-				cout << "underflow accurence" << endl;
+				cout << "underflow occurrence" << endl;
 				temp = NULL;
 			}
 
@@ -110,7 +109,7 @@ public:
 		if (top == nullptr)
 		{
 			char* allocPtr = (char*)HeapAlloc(heap, 0, sizeof(memoryBlock_control<T>));
-			memoryBlock_control<T>* newNode = new (allocPtr) memoryBlock_control<T>(top, (memoryBlock_control<T>*)((PTRSIZEINT)FreePtr | CHECK), allocPtr);
+			memoryBlock_control<T>* newNode = new (allocPtr) memoryBlock_control<T>(top, (memoryBlock_control<T>*)((PTRSIZEINT)FreePtr | CHECK));
 
 			top = newNode;
 			FreePtr = newNode;
@@ -133,20 +132,22 @@ public:
 
 		if ((PTRSIZEINT)(freeNode->next) != (PTRSIZEINT)&top)
 		{
-			cout << "overflow || not legal pool accurence" << endl;
+			cout << "overflow || not legal pool occurrence" << endl;
 			//
 			//error throw
 			// overFlow or invalid
 			//
+			*(char*)nullptr = NULL;
 			return false;
 		}
 		if (((PTRSIZEINT)(freeNode->Free) & FLAG) != CHECK)
 		{
-			cout << "underflow accurence" << endl;
+			cout << "underflow occurrence" << endl;
 			//
 			//error throw
 			// underFlow
 			//
+			*(char*)nullptr = NULL;
 			return false;
 		}
 
@@ -168,7 +169,6 @@ public:
 	}
 
 private:
-	// 스택 방식으로 반환된 (미사용) 오브젝트 블럭을 관리.
 	size_t maxSize;
 	size_t useSize;
 	memoryBlock_control<T>* top;

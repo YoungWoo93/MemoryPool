@@ -1,63 +1,109 @@
+#ifdef _DEBUG
+#pragma comment(lib, "MemoryPoolD")
+#pragma comment(lib, "ProfilerD")
+#else
+#pragma comment(lib, "MemoryPool")
+#pragma comment(lib, "Profiler")
+#endif
+
+
 #include "MemoryPool_notaling.h"
 
 #include "../MemoryPool/MemoryPool.h"
-#pragma comment(lib, "MemoryPool")
-
 #include "Profiler/Profiler/Profiler.h"
-#pragma comment(lib, "Profiler")
+
 
 #include <iostream>
 #include <vector>
 #define _USE_PROFILE_
 
 using namespace std;
-#define testSize	100000
+#define testSize	10
 
 #include <cmath>
 
 struct sample {
 	char s[64];
 };
-
-MemoryPool<sample> mp(testSize, (int)pow(2, ceil(log2(sizeof(sample)))));
-MemoryPool_notaling<sample> mp_control(testSize);
+MemoryPool memorypool;
+ObjectPool<sample> mp(testSize);
+ObjectPool<sample> mp_control(testSize);
 
 vector<sample*> arr(testSize);
 vector<sample*> arr1(testSize);
 vector<sample*> arr2(testSize);
 void basic_test();
 void recycle_test();
+void fastRecycle_test();
 void notRegal_test();
 void overFlow_test();
 void perfomence_test_alloc();
 void perfomence_test_use();
 void hjTest();
 
+void genericMemoryPoolAllocTest();
+void genericMemoryPooloverflowTest();
+void genericMemoryPoolunderflowTest();
 
 void main()
 {
+	//genericMemoryPoolAllocTest();
+
 	//basic_test();
 	//recycle_test();
 	//notRegal_test();
 	//overFlow_test();
+	fastRecycle_test();
 
 	//perfomence_test_alloc();
-	perfomence_test_use();
+	//perfomence_test_use();
 
 }
+
+void genericMemoryPoolAllocTest()
+{
+	for (int i = 1; i < 10000; i++)
+	{
+		auto p = memorypool.alloc(i);
+		memorypool.free(p, i);
+	}
+	return;
+}
+
+void genericMemoryPooloverflowTest()
+{
+	for (int i = 2; i < 10000; i*=2)
+	{
+		auto p = memorypool.alloc(i);
+		*((char*)p + i * 2) = 'a';
+		memorypool.free(p, i);
+	}
+	return;
+}
+void genericMemoryPoolunderflowTest()
+{
+	for (int i = 2; i < 10000; i *= 2)
+	{
+		auto p = memorypool.alloc(i);
+		*((char*)p - 1) = 'a';
+		memorypool.free(p, i);
+	}
+	return;
+}
+
 
 void basic_test()
 {
 	int count = 100;
-	MemoryPool<sample> test(0, 64);
+	ObjectPool<sample> test(0);
 
 	for (int i = 0; i < count; i++)
 	{
-		sample* t = test.alloc();
+		sample* t = test.Alloc();
 		_itoa_s(i, t->s, 10);
 
 		cout << t->s << endl;
-		test.Free(t);
+		test.free(t);
 	}
 
 
@@ -66,54 +112,106 @@ void basic_test()
 
 void recycle_test()
 {
-	MemoryPool<int> test(3);
+	ObjectPool<int> test(3);
 
-	int* t1 = test.alloc();
+	int* t1 = test.Alloc();
 	*t1 = 1;
 	cout << *t1 << "\t" << t1 << endl;
 
-
-	int* t2 = test.alloc();
+	/*/
+	int* t2 = test.Alloc();
 	*t2 = 2;
 	cout << *t2 << "\t" << t2 << endl;
 
 
-	int* t3 = test.alloc();
+	int* t3 = test.Alloc();
 	*t3 = 3;
 	cout << *t3 << "\t" << t3 << endl;
 
 
 	test.Free(t2);
+	/*/
 	test.Free(t1);
 
-	int* t5 = test.alloc();
+	t1 = test.Alloc();
+	*t1 = 1;
+	cout << *t1 << "\t" << t1 << endl;
+	test.Free(t1);
+
+	t1 = test.Alloc();
+	*t1 = 1;
+	cout << *t1 << "\t" << t1 << endl;
+	test.Free(t1);
+
+	t1 = test.Alloc();
+	*t1 = 1;
+	cout << *t1 << "\t" << t1 << endl;
+	test.Free(t1);
+
+	int* t5 = test.Alloc();
 	*t5 = 1;
 	cout << *t5 << "\t" << t5 << endl;
 
-	int* t4 = test.alloc();
+	int* t4 = test.Alloc();
 	*t4 = 2;
 	cout << *t4 << "\t" << t4 << endl;
 
+	test.clear();
+	test.init(10);
+
+	int* t6 = test.Alloc();
+	*t6 = 1;
+	cout << *t6 << "\t" << t6 << endl;
 
 
+	int* t7 = test.Alloc();
+	*t7 = 2;
+	cout << *t7 << "\t" << t7 << endl;
 
+
+	int* t8 = test.Alloc();
+	*t8 = 3;
+	cout << *t8 << "\t" << t8 << endl;
 
 
 }
 
+#include <stack>
+void fastRecycle_test() {
+	ObjectPool<int> pool(10);
+	std::stack<int*> s;
+	while (true) {
+		printf("%d\t/\t%d\n", pool.GetUseCount(), pool.GetCapacityCount());
 
+		int a = rand() % 10;
+
+		for (int i = 0; i < a; i++) {
+			s.push(pool.Alloc());
+			*s.top() = i;
+		}
+
+		if (pool.GetUseCount() <= 1)
+			continue;
+
+		int b = rand() % (pool.GetUseCount() / 2);
+		for (int i = 0; i < b; i++) {
+			pool.Free(s.top());
+			s.pop();
+		}
+	}
+}
 
 struct testSTRUCT {
 	char* test[2];
 };
 void notRegal_test()
 {
-	MemoryPool<testSTRUCT> test(3);
-	MemoryPool<testSTRUCT> test2(3);
+	ObjectPool<testSTRUCT> test(3);
+	ObjectPool<testSTRUCT> test2(3);
 
-	testSTRUCT* a1 = test.alloc();
-	testSTRUCT* a2 = test.alloc();
-	testSTRUCT* a3 = test2.alloc();
+	testSTRUCT* a1 = test.Alloc();
+	testSTRUCT* a2 = test.Alloc();
+	testSTRUCT* a3 = test2.Alloc();
 
 
 	test.Free(a3);
@@ -121,9 +219,9 @@ void notRegal_test()
 
 void overFlow_test()
 {
-	MemoryPool<testSTRUCT> test(3);
+	ObjectPool<testSTRUCT> test(3);
 
-	testSTRUCT* a1 = test.alloc();
+	testSTRUCT* a1 = test.Alloc();
 	a1->test[0] = (char*)ULLONG_MAX;
 	a1->test[1] = (char*)ULLONG_MAX;
 	a1->test[2] = (char*)ULLONG_MAX;
@@ -145,10 +243,10 @@ void perfomence_test_use()
 
 		for (int a = 1; a <= 64; a *= 2)
 		{
-			MemoryPool<sample> mpt(testSize, a);
+			ObjectPool<sample> mpt(testSize, a);
 
 			{
-				//scopeProfiler s("alloc memory pool aling " + to_string(a));
+				//scopeProfiler s("Alloc memory pool aling " + to_string(a));
 				for (int j = 0; j < testSize; j++)
 				{
 					arr1[j] = mpt.alignAlloc(a);
@@ -175,19 +273,21 @@ void perfomence_test_use()
 				//scopeProfiler s("free memory pool " + to_string(a));
 				for (int j = 0; j < testSize; j++)
 				{
-					mpt.Free(arr1[j]);
+					mpt.free(arr1[j]);
 				}
 			}
 		}
 		/*/
 
 		{
-			scopeProfiler s("alloc memory pool control");
-			for (int j = 0; j < testSize / 2; j++)
+			scopeProfiler s("Alloc memory pool control");
+			for (int j = 0; j < testSize; j++)
 			{
-				arr2[j] = mp_control.alloc();
+				arr2[j] = mp_control.Alloc();
 			}
-			return;
+			//*((char*)arr2[1] - 1) = 'a';
+			//*((char*)arr2[1] + sizeof(arr2[1]->s) + 1) = 'a';
+			//return;
 		}
 
 		{
@@ -208,7 +308,7 @@ void perfomence_test_use()
 		{
 			for (int j = 0; j < testSize; j++)
 			{
-				mp.Free(arr2[j]);
+				mp_control.Free(arr2[j]);
 			}
 		}
 		
@@ -237,7 +337,7 @@ void perfomence_test_alloc()
 		scopeProfiler s("use memory pool 1");
 
 		for (int j = 0; j < testSize; j++)
-			arr[j] = mp.alloc();
+			arr[j] = mp.Alloc();
 
 		for (int j = 0; j < testSize; j++)
 			mp.Free(arr[j]);
@@ -247,7 +347,7 @@ void perfomence_test_alloc()
 	cout << "nd: " << endl;
 	for (int i = 0; i < 1000; i++)
 	{
-		scopeProfiler s("use stl alloc");
+		scopeProfiler s("use stl Alloc");
 
 		for (int j = 0; j < testSize; j++)
 			arr[j] = new sample();

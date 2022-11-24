@@ -38,17 +38,19 @@
 #endif
 #endif
 
-template <typename T> class MemoryPool;
+
+
+template <typename T> class ObjectPool;
 
 #pragma pack(push, 1)
 template <typename T>
 struct  memoryBlock
 {
 	memoryBlock()
-		: Free(nullptr), data(), next(nullptr), allocPtr(nullptr) {
+		: Free(nullptr), data(), next(nullptr) {
 	}
-	memoryBlock(memoryBlock* _next, memoryBlock* _free, char* _allocPtr)
-		: Free(_free), data(), next(_next), allocPtr(_allocPtr) {
+	memoryBlock(memoryBlock* _next, memoryBlock* _free)
+		: Free(_free), data(), next(_next) {
 	}
 	~memoryBlock() {
 	}
@@ -57,131 +59,156 @@ struct  memoryBlock
 	T data;
 
 	memoryBlock* next;
-	char* allocPtr;
-	friend class MemoryPool<T>;
+	friend class ObjectPool<T>;
+	friend class MemoryPool;
 };
 #pragma pack(pop)
 
 #include <iostream>
 using namespace std;
 
+
+class BaseObjectPool {
+public:
+	BaseObjectPool() {
+	}
+
+	~BaseObjectPool() {
+	}
+
+	virtual void* alloc() {
+		return nullptr;
+	}
+	virtual bool free(void* v) {
+		return true;
+	}
+};
+
 template <typename T>
-class MemoryPool
+class ObjectPool : BaseObjectPool
 {
 
 public:
-	MemoryPool()
+	ObjectPool()
 		:maxSize(0), useSize(0), top(nullptr), FreePtr(nullptr), heap(HeapCreate(0, 0, 0)) {
 
 	}
-	MemoryPool(int _size, size_t _alignSize = 1)
+	ObjectPool(int _size)
 		:maxSize(_size), useSize(0), top(nullptr), FreePtr(nullptr), heap(HeapCreate(0, 0, 0))
 	{
-		if (_alignSize > 1)
+		for (int i = 0; i < _size; i++)
 		{
-			for (int i = 0; i < _size; i++)
-			{
-				char* allocPtr = (char*)HeapAlloc(heap, 0, sizeof(memoryBlock<T>) + _alignSize - 1);
-				char* alignPtr = (char*)((((PTRSIZEINT)allocPtr + sizeof(FreePtr) + _alignSize - 1) & (~(_alignSize - 1))) - sizeof(FreePtr));
-				memoryBlock<T>* newNode = new (alignPtr) memoryBlock<T>(top, (memoryBlock<T>*)((PTRSIZEINT)FreePtr | CHECK), allocPtr);
+			char* allocPtr = (char*)HeapAlloc(heap, 0, sizeof(memoryBlock<T>));// new memoryBlock<T>();
+			memoryBlock<T>* newNode = new (allocPtr) memoryBlock<T>(top, (memoryBlock<T>*)((PTRSIZEINT)FreePtr | CHECK));
 
-				top = newNode;
-				FreePtr = newNode;
-			}
-		}
-		else
-		{
-			for (int i = 0; i < _size; i++)
-			{
-				char* allocPtr = (char*)HeapAlloc(heap, 0, sizeof(memoryBlock<T>));// new memoryBlock<T>();
-				memoryBlock<T>* newNode = new (allocPtr) memoryBlock<T>(top, (memoryBlock<T>*)((PTRSIZEINT)FreePtr | CHECK), allocPtr);
-
-				top = newNode;
-				FreePtr = newNode;
-			}
+			top = newNode;
+			FreePtr = newNode;
 		}
 	}
 
-	virtual	~MemoryPool() {
+	virtual	~ObjectPool() {
 		while (FreePtr != nullptr) {
 			memoryBlock<T>* temp = FreePtr;
-			char* allocPtr = temp->allocPtr;
+			if (((PTRSIZEINT)(temp->Free) & FLAG) != CHECK)
+			{
+				cout << "underflow occurrence" << endl;
+				temp = NULL;
+			}
 
 			FreePtr = (memoryBlock<T>*)((PTRSIZEINT)temp->Free & (~FLAG));
-
-			//cout << (char*)&(temp->data) << endl;
-
 			temp->~memoryBlock();
-			HeapFree(heap, 0, allocPtr);
+			HeapFree(heap, 0, temp); // exception, when underflow
 		}
 	}
 
-	T* alloc()
+	void init(int _size) {
+		maxSize = _size;
+		useSize = 0;
+		top = nullptr;
+		FreePtr = nullptr;
+
+		for (int i = 0; i < _size; i++)
+		{
+			allocNewBlock();
+			//char* allocPtr = (char*)HeapAlloc(heap, 0, sizeof(memoryBlock<T>));// new memoryBlock<T>();
+			//memoryBlock<T>* newNode = new (allocPtr) memoryBlock<T>(top, (memoryBlock<T>*)((PTRSIZEINT)FreePtr | CHECK));
+			//top = newNode;
+			//FreePtr = newNode;
+		}
+	}
+
+	void clear() {
+		maxSize = 0;
+		useSize = 0;
+		top = nullptr;
+		FreePtr = nullptr;
+
+		while (FreePtr != nullptr) {
+			memoryBlock<T>* temp = FreePtr;
+			if (((PTRSIZEINT)(temp->Free) & FLAG) != CHECK)
+			{
+				cout << "underflow occurrence" << endl;
+				temp = NULL;
+			}
+
+			FreePtr = (memoryBlock<T>*)((PTRSIZEINT)temp->Free & (~FLAG));
+			temp->~memoryBlock();
+			HeapFree(heap, 0, temp); // exception, when underflow
+		}
+	}
+
+	void* alloc() {
+		return (void*)Alloc();
+	}
+
+	T* Alloc()
 	{
 		if (top == nullptr)
 		{
-			char* allocPtr = (char*)HeapAlloc(heap, 0, sizeof(memoryBlock<T>));
-			memoryBlock<T>* newNode = new (allocPtr) memoryBlock<T>(top, (memoryBlock<T>*)((PTRSIZEINT)FreePtr | CHECK), allocPtr);
-
-			top = newNode;
-			FreePtr = newNode;
+			allocNewBlock();
+			//char* allocPtr = (char*)HeapAlloc(heap, 0, sizeof(memoryBlock<T>));
+			//memoryBlock<T>* newNode = new (allocPtr) memoryBlock<T>(nullptr, (memoryBlock<T>*)((PTRSIZEINT)FreePtr | CHECK));
+			//top = newNode;
+			//FreePtr = newNode;
 
 			maxSize++;
 		}
 
 		memoryBlock<T>* ret = top;
 		top = (memoryBlock<T>*)ret->next;
-		ret->next = (memoryBlock<T>*)(&top);
+		ret->next = (memoryBlock<T>*)this;
 
 		useSize++;
 
 		return (T*)&(ret->data);
 	}
 
-	T* alignAlloc(const size_t _alignSize)
-	{
-		if (top == nullptr)
-		{
-			char* allocPtr = (char*)HeapAlloc(heap, 0, sizeof(memoryBlock<T>) + _alignSize - 1);// new memoryBlock<T>();
-			//char* alignPtr = (char*)(((long long int)allocPtr + alignSize - 1) & (~(alignSize - 1))); 
-			char* alignPtr = (char*)((((PTRSIZEINT)allocPtr + sizeof(FreePtr) + _alignSize - 1) & (~(_alignSize - 1))) - sizeof(FreePtr));
-			memoryBlock<T>* newNode = new (alignPtr) memoryBlock<T>(top, (memoryBlock<T>*)((PTRSIZEINT)FreePtr | CHECK), allocPtr);
-
-			//cout << "\t" << (long long int)(&(newNode->data)) % alignSize << endl;
-
-			top = newNode;
-			FreePtr = newNode;
-
-			maxSize++;
-		}
-
-		memoryBlock<T>* ret = top;
-		top = (memoryBlock<T>*)ret->next;
-		ret->next = (memoryBlock<T>*)(&top);
-
-		useSize++;
-
-		return (T*)&(ret->data);
+	bool free(void* v) {
+		return Free((T*)v);
 	}
 
 	bool Free(T* pData)
 	{
 		memoryBlock<T>* freeNode = (memoryBlock<T>*)((char*)(pData)-sizeof(FreePtr));
 
-		if ((PTRSIZEINT)(freeNode->next) != (PTRSIZEINT)&top)
+		if ((PTRSIZEINT)(freeNode->next) != (PTRSIZEINT)this)
 		{
+			cout << "overflow || not legal pool occurrence" << endl;
 			//
 			//error throw
 			// overFlow or invalid
 			//
+			*(char*)nullptr = NULL;
 			return false;
 		}
 		if (((PTRSIZEINT)(freeNode->Free) & FLAG) != CHECK)
 		{
+			cout << "underflow occurrence" << endl;
 			//
 			//error throw
-			// overFlow or invalid
+			// underFlow
 			//
+			*(char*)nullptr = NULL;
 			return false;
 		}
 
@@ -203,15 +230,96 @@ public:
 	}
 
 private:
-	// 스택 방식으로 반환된 (미사용) 오브젝트 블럭을 관리.
 	size_t maxSize;
 	size_t useSize;
 	memoryBlock<T>* top;
 	memoryBlock<T>* FreePtr;
 	HANDLE	heap;
+
+	void allocNewBlock()
+	{
+		char* allocPtr = (char*)HeapAlloc(heap, 0, sizeof(memoryBlock<T>));// new memoryBlock<T>();
+		memoryBlock<T>* newNode = new (allocPtr) memoryBlock<T>(top, (memoryBlock<T>*)((PTRSIZEINT)FreePtr | CHECK));
+
+		top = newNode;
+		FreePtr = newNode;
+	}
+
+	friend class MemoryPool;
 };
 
+#include <map>
 
+class MemoryPool {
+public:
+	MemoryPool() {
+		//poolList[3] = new ObjectPool<char[8]>();
+		//poolList[4] = new ObjectPool<char[16]>();
+		//poolList[5] = new ObjectPool<char[32]>();
+		//poolList[6] = new ObjectPool<char[64]>();
+		//poolList[7] = new ObjectPool<char[128]>();
+		//poolList[8] = new ObjectPool<char[256]>();
+		//poolList[9] = new ObjectPool<char[512]>();
+		//poolList[10] = new ObjectPool<char[1024]>();
+		//poolList[11] = new ObjectPool<char[2048]>();
+		//poolList[12] = new ObjectPool<char[4096]>();
+		//poolList[13] = new ObjectPool<char[8192]>();
+		//poolList[14] = new ObjectPool<char[16384]>();
+		//poolList[15] = new ObjectPool<char[32768]>();
+		//poolList[16] = new ObjectPool<char[65536]>();
+		//poolList[17] = new ObjectPool<char[131072]>();
+		//poolList[18] = new ObjectPool<char[262144]>();
+		//poolList[19] = new ObjectPool<char[524288]>();
+		//poolList[20] = new ObjectPool<char[1048576]>();
+		//poolList[21] = new ObjectPool<char[2097152]>();
+		//poolList[22] = new ObjectPool<char[4194304]>();
+		//poolList[23] = new ObjectPool<char[8388608]>();
+		//poolList[24] = new ObjectPool<char[16777216]>();
+
+		poolList[3] = new ObjectPool<char[1 << 3]>();
+		poolList[4] = new ObjectPool<char[1 << 4]>();
+		poolList[5] = new ObjectPool<char[1 << 5]>();
+		poolList[6] = new ObjectPool<char[1 << 6]>();
+		poolList[7] = new ObjectPool<char[1 << 7]>();
+		poolList[8] = new ObjectPool<char[1 << 8]>();
+		poolList[9] = new ObjectPool<char[1 << 9]>();
+		poolList[10] = new ObjectPool<char[1 << 10]>();
+		poolList[11] = new ObjectPool<char[1 << 11]>();
+		poolList[12] = new ObjectPool<char[1 << 12]>();
+		poolList[13] = new ObjectPool<char[1 << 13]>();
+		poolList[14] = new ObjectPool<char[1 << 14]>();
+		poolList[15] = new ObjectPool<char[1 << 15]>();
+		poolList[16] = new ObjectPool<char[1 << 16]>();
+		poolList[17] = new ObjectPool<char[1 << 17]>();
+		poolList[18] = new ObjectPool<char[1 << 18]>();
+		poolList[19] = new ObjectPool<char[1 << 19]>();
+		poolList[20] = new ObjectPool<char[1 << 20]>();
+		poolList[21] = new ObjectPool<char[1 << 21]>();
+		poolList[22] = new ObjectPool<char[1 << 22]>();
+		poolList[23] = new ObjectPool<char[1 << 23]>();
+		poolList[24] = new ObjectPool<char[1 << 24]>();
+	}
+	~MemoryPool() {
+
+	}
+
+	void* alloc(int n)
+	{
+		int size = max(3, (int)ceil(log2(n)));
+		
+		return poolList[size]->alloc();
+	}
+
+	bool free(void* pData, int sizeOfpData)
+	{
+		int size = max(3, (int)ceil(log2(sizeOfpData)));
+
+		return poolList[size]->free(pData);
+	}
+private:
+	map<int, BaseObjectPool*> poolList;
+
+};
 
 
 

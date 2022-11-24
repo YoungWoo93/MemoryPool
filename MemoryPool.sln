@@ -6,6 +6,9 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "MemoryPool", "MemoryPool\MemoryPool.vcxproj", "{010E6366-5E3A-47E9-9457-3C6826D2A290}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "testMain", "testMain\testMain.vcxproj", "{E3334471-11CD-4314-B2D5-BCDE91E81090}"
+	ProjectSection(ProjectDependencies) = postProject
+		{010E6366-5E3A-47E9-9457-3C6826D2A290} = {010E6366-5E3A-47E9-9457-3C6826D2A290}
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
