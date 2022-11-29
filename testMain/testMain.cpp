@@ -59,12 +59,12 @@ void main()
 	//recycle_test();
 	//notRegal_test();
 	//overFlow_test();
-	fastRecycle_test();
+	//fastRecycle_test();
 
 	//perfomence_test_alloc();
 	//perfomence_test_use();
 
-	//serializerHeapPageTest();
+	serializerHeapPageTest();
 }
 
 void genericMemoryPoolAllocTest()
@@ -371,7 +371,7 @@ void serializerHeapPageTest()
 {
 	std::map<UINT64, UINT64> m;
 	HANDLE h = HeapCreate(0, 0, 0);
-	ObjectPool<serializer> so(testSize);
+	ObjectPool<serializer> so(testSize, 128);
 	serializer* arr[testSize];
 	for (int i = 0; i < testSize; i++) {
 		arr[i] = so.Alloc();
@@ -386,4 +386,5 @@ void serializerHeapPageTest()
 	for (auto it : m) {
 		printf("%ld : %ld\n", it.first, it.second);
 	}
+	printf("\n size : %d\n", m.size());
 }

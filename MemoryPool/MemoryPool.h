@@ -43,12 +43,14 @@
 template <typename T> class ObjectPool;
 
 #pragma pack(push, 1)
-template <typename T, typename... param>
+template <typename T>
 struct  memoryBlock
 {
+	template <typename... param>
 	memoryBlock(param... args)
 		: Free(nullptr), data(args ...), next(nullptr) {
 	}
+	template <typename... param>
 	memoryBlock(memoryBlock* _next, memoryBlock* _free, param... args)
 		: Free(_free), data(args ...), next(_next) {
 	}
@@ -93,13 +95,14 @@ public:
 		:maxSize(0), useSize(0), top(nullptr), FreePtr(nullptr), heap(HeapCreate(0, 0, 0)) {
 
 	}
-	ObjectPool(int _size)
+	template <typename... param>
+	ObjectPool(int _size, param... args)
 		:maxSize(_size), useSize(0), top(nullptr), FreePtr(nullptr), heap(HeapCreate(0, 0, 0))
 	{
 		for (int i = 0; i < _size; i++)
 		{
 			char* allocPtr = (char*)HeapAlloc(heap, 0, sizeof(memoryBlock<T>));// new memoryBlock<T>();
-			memoryBlock<T>* newNode = new (allocPtr) memoryBlock<T>(top, (memoryBlock<T>*)((PTRSIZEINT)FreePtr | CHECK));
+			memoryBlock<T>* newNode = new (allocPtr) memoryBlock<T>(top, (memoryBlock<T>*)((PTRSIZEINT)FreePtr | CHECK), args...);
 
 			top = newNode;
 			FreePtr = newNode;
