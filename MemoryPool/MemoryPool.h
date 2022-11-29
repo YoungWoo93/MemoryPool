@@ -43,14 +43,14 @@
 template <typename T> class ObjectPool;
 
 #pragma pack(push, 1)
-template <typename T>
+template <typename T, typename... param>
 struct  memoryBlock
 {
-	memoryBlock()
-		: Free(nullptr), data(), next(nullptr) {
+	memoryBlock(param... args)
+		: Free(nullptr), data(args ...), next(nullptr) {
 	}
-	memoryBlock(memoryBlock* _next, memoryBlock* _free)
-		: Free(_free), data(), next(_next) {
+	memoryBlock(memoryBlock* _next, memoryBlock* _free, param... args)
+		: Free(_free), data(args ...), next(_next) {
 	}
 	~memoryBlock() {
 	}
@@ -193,7 +193,7 @@ public:
 
 		if ((PTRSIZEINT)(freeNode->next) != (PTRSIZEINT)this)
 		{
-			cout << "overflow || not legal pool occurrence" << endl;
+			cout << "overflow || not legal pool occurrence || reduplication release memory" << endl;
 			//
 			//error throw
 			// overFlow or invalid

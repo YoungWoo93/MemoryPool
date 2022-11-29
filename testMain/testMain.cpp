@@ -1,9 +1,13 @@
 #ifdef _DEBUG
 #pragma comment(lib, "MemoryPoolD")
 #pragma comment(lib, "ProfilerD")
+#pragma comment(lib, "SerializerD")
+
 #else
 #pragma comment(lib, "MemoryPool")
 #pragma comment(lib, "Profiler")
+#pragma comment(lib, "Serializer")
+
 #endif
 
 
@@ -11,14 +15,14 @@
 
 #include "../MemoryPool/MemoryPool.h"
 #include "Profiler/Profiler/Profiler.h"
-
+#include "Serializer/Serializer/Serializer.h"
 
 #include <iostream>
 #include <vector>
 #define _USE_PROFILE_
 
 using namespace std;
-#define testSize	10
+#define testSize	1000
 
 #include <cmath>
 
@@ -45,6 +49,8 @@ void genericMemoryPoolAllocTest();
 void genericMemoryPooloverflowTest();
 void genericMemoryPoolunderflowTest();
 
+void serializerHeapPageTest();
+
 void main()
 {
 	//genericMemoryPoolAllocTest();
@@ -58,6 +64,7 @@ void main()
 	//perfomence_test_alloc();
 	//perfomence_test_use();
 
+	//serializerHeapPageTest();
 }
 
 void genericMemoryPoolAllocTest()
@@ -354,5 +361,29 @@ void perfomence_test_alloc()
 
 		for (int j = 0; j < testSize; j++)
 			delete arr[j];
+	}
+}
+
+
+#include <map>
+
+void serializerHeapPageTest()
+{
+	std::map<UINT64, UINT64> m;
+	HANDLE h = HeapCreate(0, 0, 0);
+	ObjectPool<serializer> so(testSize);
+	serializer* arr[testSize];
+	for (int i = 0; i < testSize; i++) {
+		arr[i] = so.Alloc();
+
+		UINT64 index = ((unsigned long long int)(arr[i]->getBufferPtr())) / (4 * 1024);
+		if (m.find(index) == m.end())
+			m[index] = 1;
+		else
+			m[index]++;
+	}
+
+	for (auto it : m) {
+		printf("%ld : %ld\n", it.first, it.second);
 	}
 }
