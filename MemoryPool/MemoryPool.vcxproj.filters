@@ -13,6 +13,12 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="헤더 파일\ObjectPool">
+      <UniqueIdentifier>{da457192-3200-4d36-ba17-0d222cfd7654}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="헤더 파일\MemoryPool">
+      <UniqueIdentifier>{6e4da0d5-cf7c-4263-8d57-efb62bac4e89}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="MemoryPool.cpp">
@@ -23,5 +29,28 @@
     <ClInclude Include="MemoryPool.h">
       <Filter>헤더 파일</Filter>
     </ClInclude>
+    <ClInclude Include="BaseObjectPool.h">
+      <Filter>헤더 파일</Filter>
+    </ClInclude>
+    <ClInclude Include="MemoryPool.v.1.0.h">
+      <Filter>헤더 파일\MemoryPool</Filter>
+    </ClInclude>
+    <ClInclude Include="ObjectPool.v.1.0.h">
+      <Filter>헤더 파일\ObjectPool</Filter>
+    </ClInclude>
+    <ClInclude Include="ObjectPool.v.1.1.h">
+      <Filter>헤더 파일\ObjectPool</Filter>
+    </ClInclude>
+    <ClInclude Include="ObjectPool.v.2.1.h">
+      <Filter>헤더 파일\ObjectPool</Filter>
+    </ClInclude>
+    <ClInclude Include="ObjectPool.v.3.0.h">
+      <Filter>헤더 파일\ObjectPool</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="ObjectPool.v.2.0.h">
+      <Filter>헤더 파일\ObjectPool</Filter>
+    </None>
   </ItemGroup>
 </Project>
