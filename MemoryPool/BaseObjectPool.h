@@ -15,7 +15,7 @@
 #define	PTRSIZEINT			__int32
 #endif
 
-template <typename T> class ObjectPool;
+//template <typename T> class ObjectPool;
 
 
 class BaseObjectPool {
@@ -53,6 +53,10 @@ struct  memoryBlock
 template <typename T>
 struct chunkBlock
 {
+	chunkBlock()
+		: headNodePtr(nullptr), tailNodePtr(nullptr), nextChunkBlock(nullptr), lastUseTick(GetTickCount64()), maxSize(0), curSize(0) {
+	}
+
 	chunkBlock(int chunkSize)
 		: headNodePtr(nullptr), tailNodePtr(nullptr), nextChunkBlock(nullptr), lastUseTick(GetTickCount64()), maxSize(chunkSize), curSize(chunkSize){
 		
@@ -73,6 +77,26 @@ struct chunkBlock
 			memoryBlock<T>* temp = headNodePtr;
 			headNodePtr = headNodePtr->next;
 			delete temp;
+		}
+	}
+
+	void reAlloc() {
+		int offset = maxSize - curSize;
+
+		if (curSize == 0){
+			headNodePtr = new memoryBlock<T>();
+			tailNodePtr = headNodePtr;
+			offset -= 1;
+			curSize += 1;
+		}
+
+		while(offset-- > 0)
+		{
+			memoryBlock<T>* temp = new memoryBlock<T>();
+			temp->next = headNodePtr;
+			headNodePtr = temp;
+
+			++curSize;
 		}
 	}
 	memoryBlock<T>*			headNodePtr;

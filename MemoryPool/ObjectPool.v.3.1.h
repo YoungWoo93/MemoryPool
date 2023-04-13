@@ -19,14 +19,12 @@ using namespace std;
 // 마지막에 모두 회수함
 // 스레드 세이프티함
 // 청크단위 할당함
-// TLS에 subPool 인스턴스를 생성해 넣어주고 이용함
+// 동적 TLS로 메모리풀 인스턴스 생성시 해당 TLS subPool을 생성함
 //
 
 class TLSPoolBase;
 template <typename T>
 class TLSPool;
-
-extern __declspec(thread) std::unordered_map<void*, std::shared_ptr<TLSPoolBase>> TLSPoolMap;
 
 template <typename T>
 class chunkBlockStack
@@ -47,7 +45,7 @@ public:
 			compareKey = chunkBlockStackTop;
 			emptyBlock->nextChunkBlock = compareKey;
 
-			if (InterlockedCompareExchangePointer((PVOID*) &chunkBlockStackTop, pushKey, compareKey) == compareKey)
+			if (InterlockedCompareExchangePointer((PVOID*)&chunkBlockStackTop, pushKey, compareKey) == compareKey)
 				break;
 		}
 
@@ -56,7 +54,7 @@ public:
 
 	chunkBlock<T>* pop() {
 		chunkBlock<T>* ret;
-		
+
 		chunkBlock<T>* compareKey;
 		chunkBlock<T>* nextTopKey;
 		//compareKey = tempTop;
@@ -77,7 +75,7 @@ public:
 				ret = (chunkBlock<T>*)MAKE_NODEPTR(compareKey);
 				nextTopKey = ret->nextChunkBlock;
 
-				if (InterlockedCompareExchangePointer((PVOID*) &chunkBlockStackTop, nextTopKey, compareKey) == compareKey)
+				if (InterlockedCompareExchangePointer((PVOID*)&chunkBlockStackTop, nextTopKey, compareKey) == compareKey)
 					break;
 			}
 		}
@@ -95,10 +93,20 @@ template <typename T>
 class ObjectPool : public BaseObjectPool
 {
 public:
+	void init()
+	{
+		TLSPool<T>* temp = new TLSPool<T>(this);
+		TlsSetValue(TLSIndex, temp);
+	}
+	void clear()
+	{
+		delete TlsGetValue(TLSIndex);
+	}
+	int TLSIndex;
 	ObjectPool()
 		:maxBlockCount(0), useBlockCount(0), topBlock(0), blockSize(100), linkPtr(nullptr), useCount(0), s(100)
-		{
-
+	{
+		TLSIndex = TlsAlloc();
 	}
 
 	ObjectPool(int initNodeSize, int chunkBlockSize = 100)
@@ -109,64 +117,37 @@ public:
 			newChunk->nextChunkBlock = (chunkBlock<T>*)this;
 			FreeChunk(newChunk);
 		}
+
+		TLSIndex = TlsAlloc();
 	}
 
 	virtual	~ObjectPool() {
+		TlsFree(TLSIndex);
 	}
 
 	int getCurrentThreadUseCount()
 	{
-		unordered_map<void*, shared_ptr<TLSPoolBase>>::iterator it = TLSPoolMap.find(this);
-		if (it == TLSPoolMap.end()) {
-			TLSPoolMap[this] = make_shared<TLSPool<T>>(this);
-			it = TLSPoolMap.find(this);
-		}
-
-		return it->second.get()->getUseSize();
+		return ((TLSPool<T>*)TlsGetValue(TLSIndex))->getUseSize();
 	}
 	int getCurrentThreadMaxCount()
 	{
-		unordered_map<void*, shared_ptr<TLSPoolBase>>::iterator it = TLSPoolMap.find(this);
-		if (it == TLSPoolMap.end()) {
-			TLSPoolMap[this] = make_shared<TLSPool<T>>(this);
-			it = TLSPoolMap.find(this);
-		}
-
-		return it->second.get()->getMaxSize();
+		return ((TLSPool<T>*)TlsGetValue(TLSIndex))->getMaxSize();
 	}
 
 	T* Alloc()
 	{
-		unordered_map<void*, shared_ptr<TLSPoolBase>>::iterator it = TLSPoolMap.find(this);
-		if (it == TLSPoolMap.end()) {
-			TLSPoolMap[this] = make_shared<TLSPool<T>>(this);
-			it = TLSPoolMap.find(this);
-		}
-		
-		return (T*)(it->second.get()->subPop());
+		return (T*)(((TLSPool<T>*)TlsGetValue(TLSIndex))->subPop());
 	}
 
 	void Free(T* _value)
 	{
-		unordered_map<void*, shared_ptr<TLSPoolBase>>::iterator it = TLSPoolMap.find(this);
-		if (it == TLSPoolMap.end()) {
-			TLSPoolMap[this] = make_shared<TLSPool<T>>(this);
-			it = TLSPoolMap.find(this);
-		}
-
-		it->second.get()->subPush(_value);
+		((TLSPool<T>*)TlsGetValue(TLSIndex))->subPush(_value);
 	}
 
 	template <typename... param>
 	T* New(param... constructorArgs)
 	{
-		unordered_map<void*, shared_ptr<TLSPoolBase>>::iterator it = TLSPoolMap.find(this);
-		if (it == TLSPoolMap.end()) {
-			TLSPoolMap[this] = make_shared<TLSPool<T>>(this);
-			it = TLSPoolMap.find(this);
-		}
-
-		T* ret = (T*)(it->second.get()->subPop());
+		T* ret = (T*)(((TLSPool<T>*)TlsGetValue(TLSIndex))->subPop());
 		ret = new (ret) T(constructorArgs...);
 
 		return ret;
@@ -174,14 +155,8 @@ public:
 
 	void Delete(T* _value)
 	{
-		unordered_map<void*, shared_ptr<TLSPoolBase>>::iterator it = TLSPoolMap.find(this);
-		if (it == TLSPoolMap.end()) {
-			TLSPoolMap[this] = make_shared<TLSPool<T>>(this);
-			it = TLSPoolMap.find(this);
-		}
-
 		_value->~T();
-		it->second.get()->subPush(_value);
+		((TLSPool<T>*)TlsGetValue(TLSIndex))->subPush(_value);
 	}
 
 	bool FreeChunk(chunkBlock<T>* returnedBlock)
@@ -196,7 +171,7 @@ public:
 		{
 			tempTop = topBlock;
 			returnedBlock->nextChunkBlock = (chunkBlock<T>*)tempTop;
-			if (InterlockedCompareExchangePointer((PVOID*) &topBlock, (chunkBlock<T>*)returnKey, tempTop) == tempTop)
+			if (InterlockedCompareExchangePointer((PVOID*)&topBlock, (chunkBlock<T>*)returnKey, tempTop) == tempTop)
 				break;
 		}
 		InterlockedDecrement(&useBlockCount);
@@ -235,7 +210,7 @@ public:
 
 					for (int i = 1; i < offset; i++)
 						cur = cur->next;
-					
+
 					recycleChunk->headNodePtr = cur->next;
 					recycleChunk->curSize -= offset;
 					chunk->curSize = offset;
@@ -243,7 +218,7 @@ public:
 
 
 				}
-				
+
 				FreeChunk(recycleChunk);
 				recycleChunk = chunk;
 			}
@@ -270,7 +245,7 @@ public:
 					break;
 			}
 		}
-		
+
 		popBlock = ((chunkBlock<T>*)MAKE_NODEPTR(popBlock));
 		popBlock->curSize = 0;
 		*_head = popBlock->headNodePtr;
@@ -367,7 +342,7 @@ public:
 
 		if (curNodeSize == chunkBlockSize)
 			nextTailPtr = pushNode;
-		
+
 		pushNode->next = headPtr;
 		headPtr = pushNode;
 		++curNodeSize;
@@ -390,7 +365,7 @@ public:
 		{
 			nextTailPtr = tailPtr;
 			mainPoolPtr->AllocChunk(&nextTailPtr->next, &tailPtr);
-			
+
 			curNodeSize += chunkBlockSize;
 		}
 
@@ -402,7 +377,7 @@ public:
 		return curNodeSize;
 	}
 
-	int getMaxSize() 
+	int getMaxSize()
 	{
 		return releaseThreashold;
 	}
