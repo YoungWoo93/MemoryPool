@@ -38,14 +38,14 @@ public:
 		//compareKey = tempTop;
 		//pushKey = newTop;
 		//topKey = chunkBlockStackTop;
-		chunkBlock<T>* compareKey = 0;
-		chunkBlock<T>* pushKey = (chunkBlock<T>*)(MAKE_KEY(emptyBlock, InterlockedIncrement(&chunkBlockStackUniqeCounter)));
+		chunkBlock<T>* tempTop = 0;
+		chunkBlock<T>* newTop = (chunkBlock<T>*)(MAKE_KEY(emptyBlock, InterlockedIncrement(&chunkBlockStackUniqeCounter)));
 		for (;;)
 		{
-			compareKey = chunkBlockStackTop;
-			emptyBlock->nextChunkBlock = compareKey;
+			tempTop = chunkBlockStackTop;
+			emptyBlock->nextChunkBlock = tempTop;
 
-			if (InterlockedCompareExchangePointer((PVOID*)&chunkBlockStackTop, pushKey, compareKey) == compareKey)
+			if (InterlockedCompareExchangePointer((PVOID*)&chunkBlockStackTop, newTop, tempTop) == tempTop)
 				break;
 		}
 
@@ -55,8 +55,8 @@ public:
 	chunkBlock<T>* pop() {
 		chunkBlock<T>* ret;
 
-		chunkBlock<T>* compareKey;
-		chunkBlock<T>* nextTopKey;
+		chunkBlock<T>* tempTop;
+		chunkBlock<T>* nextTop;
 		//compareKey = tempTop;
 		//pushKey = newTop;
 		//topKey = chunkBlockStackTop;
@@ -71,11 +71,11 @@ public:
 		{
 			for (;;)
 			{
-				compareKey = chunkBlockStackTop;
-				ret = (chunkBlock<T>*)MAKE_NODEPTR(compareKey);
-				nextTopKey = ret->nextChunkBlock;
+				tempTop = chunkBlockStackTop;
+				ret = (chunkBlock<T>*)MAKE_NODEPTR(tempTop);
+				nextTop = ret->nextChunkBlock;
 
-				if (InterlockedCompareExchangePointer((PVOID*)&chunkBlockStackTop, nextTopKey, compareKey) == compareKey)
+				if (InterlockedCompareExchangePointer((PVOID*)&chunkBlockStackTop, nextTop, tempTop) == tempTop)
 					break;
 			}
 		}
@@ -89,24 +89,17 @@ public:
 	unsigned int chunkBlockSize;
 };
 
+
 template <typename T>
 class ObjectPool : public BaseObjectPool
 {
 public:
-	void init()
-	{
-		TLSPool<T>* temp = new TLSPool<T>(this);
-		TlsSetValue(TLSIndex, temp);
-	}
-	void clear()
-	{
-		delete TlsGetValue(TLSIndex);
-	}
-	int TLSIndex;
+	static __declspec(thread) TLSPool<T>* TLSSubPool;
+
 	ObjectPool()
 		:maxBlockCount(0), useBlockCount(0), topBlock(0), blockSize(100), linkPtr(nullptr), useCount(0), s(100)
 	{
-		TLSIndex = TlsAlloc();
+
 	}
 
 	ObjectPool(int initNodeSize, int chunkBlockSize = 100)
@@ -117,37 +110,53 @@ public:
 			newChunk->nextChunkBlock = (chunkBlock<T>*)this;
 			FreeChunk(newChunk);
 		}
-
-		TLSIndex = TlsAlloc();
 	}
 
 	virtual	~ObjectPool() {
-		TlsFree(TLSIndex);
 	}
 
 	int getCurrentThreadUseCount()
 	{
-		return ((TLSPool<T>*)TlsGetValue(TLSIndex))->getUseSize();
+
+		if ((TLSPool<T>*)TLSSubPool == nullptr)
+			TLSSubPool = new TLSPool<T>(this);
+
+		return TLSSubPool->getUseSize();
 	}
 	int getCurrentThreadMaxCount()
 	{
-		return ((TLSPool<T>*)TlsGetValue(TLSIndex))->getMaxSize();
+		if ((TLSPool<T>*)TLSSubPool == nullptr)
+			TLSSubPool = new TLSPool<T>(this);
+
+		return (T*)(((TLSPool<T>*)TLSSubPool)->getMaxSize());
 	}
 
 	T* Alloc()
 	{
-		return (T*)(((TLSPool<T>*)TlsGetValue(TLSIndex))->subPop());
+		if(TLSSubPool == 0)
+			TLSSubPool = new TLSPool<T>(this);
+
+		return (T*)(((TLSPool<T>*)TLSSubPool)->subPop());
+		
 	}
 
 	void Free(T* _value)
 	{
-		((TLSPool<T>*)TlsGetValue(TLSIndex))->subPush(_value);
+		if (TLSSubPool == nullptr)
+			TLSSubPool = new TLSPool<T>(this);
+
+		TLSSubPool->subPush(_value);
 	}
 
 	template <typename... param>
 	T* New(param... constructorArgs)
 	{
-		T* ret = (T*)(((TLSPool<T>*)TlsGetValue(TLSIndex))->subPop());
+		if ((TLSPool<T>*)TLSSubPool == nullptr)
+			TLSSubPool = new TLSPool<T>(this);
+
+		T* ret = (T*)(((TLSPool<T>*)TLSSubPool)->subPop());
+		
+		
 		ret = new (ret) T(constructorArgs...);
 
 		return ret;
@@ -156,7 +165,11 @@ public:
 	void Delete(T* _value)
 	{
 		_value->~T();
-		((TLSPool<T>*)TlsGetValue(TLSIndex))->subPush(_value);
+
+		if ((TLSPool<T>*)TLSSubPool == nullptr)
+			TLSSubPool = new TLSPool<T>(this);
+
+		((TLSPool<T>*)TLSSubPool)->subPush(_value);
 	}
 
 	bool FreeChunk(chunkBlock<T>* returnedBlock)
@@ -282,6 +295,11 @@ public:
 	{
 		return maxBlockCount;
 	}
+
+	int garbageCollection(unsigned long long int threshold)
+	{
+
+	}
 	size_t maxBlockCount;
 	size_t useBlockCount;
 
@@ -295,9 +313,12 @@ public:
 	UINT64 useCount;
 
 	chunkBlockStack<T> s;
+	bool GCFlag;
 	//friend class MemoryPool;
 };
 
+template <typename T>
+__declspec(thread) TLSPool<T>* ObjectPool<T>::TLSSubPool = nullptr;
 
 
 class TLSPoolBase {
